@@ -1,0 +1,236 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<script type="text/javascript">
+var gl;
+var shaderProgram;
+var uPMatrix;
+var vertexPositionBuffer;
+var vertexColorBuffer;
+var moveSpeed = 0.1; // Szybkość poruszania się kamery
+var rotateSpeed = 2.0; // Szybkość obracania kamery
+var cameraX = 0.0;
+var cameraY = 0.0;
+var cameraZ = -5.0;
+var cameraYaw = 0.0; // Kąt obrotu kamery wokół osi Z
+
+function MatrixMul(a, b) {
+  var c = new Array(16);
+  for (var i = 0; i < 4; i++) {
+    for (var j = 0; j < 4; j++) {
+      c[i * 4 + j] = 0.0;
+      for (var k = 0; k < 4; k++) {
+        c[i * 4 + j] += a[i * 4 + k] * b[k * 4 + j];
+      }
+    }
+  }
+  return c;
+}
+
+function startGL() {
+  var canvas = document.getElementById("canvas3D");
+  gl = canvas.getContext("experimental-webgl");
+  gl.viewportWidth = canvas.width;
+  gl.viewportHeight = canvas.height;
+
+  // Shader code
+  var vertextShaderSource = `
+    precision highp float;
+    attribute vec3 aVertexPosition;
+    attribute vec3 aVertexColor;
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    varying vec3 vColor;
+    void main(void) {
+      gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+      vColor = aVertexColor;
+    }
+  `;
+  var fragmentShaderSource = `
+    precision highp float;
+    varying vec3 vColor;
+    void main(void) {
+      gl_FragColor = vec4(vColor,1.0);
+    }
+  `;
+  var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+  var vertexShader = gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(fragmentShader, fragmentShaderSource);
+  gl.shaderSource(vertexShader, vertextShaderSource);
+  gl.compileShader(fragmentShader);
+  gl.compileShader(vertexShader);
+
+  shaderProgram = gl.createProgram();
+  gl.attachShader(shaderProgram, vertexShader);
+  gl.attachShader(shaderProgram, fragmentShader);
+  gl.linkProgram(shaderProgram);
+
+  // Scene description
+  var vertexPosition = [
+    //1
+  -0.2, +0.2, +0.0,  -0.2, -0.2, +0.0,  +0.2, -0.2, +0.0, 
+    -0.2, +0.2, +0.0,  +0.2, -0.2, +0.0,  +0.2, +0.2, +0.0,
+  //2
+    -0.6, +0.2, +0.0,  -0.6, -0.2, +0.0,  -0.2, -0.2, +0.0, 
+    -0.6, +0.2, +0.0,  -0.2, -0.2, +0.0,  -0.2, +0.2, +0.0,
+  //3
+    -1.0, +0.2, +0.0,  -1.0, -0.2, +0.0,  -0.6, -0.2, +0.0, 
+    -1.0, +0.2, +0.0,  -0.6, -0.2, +0.0,  -0.6, +0.2, +0.0,
+  //4
+    -1.0, +0.6, +0.0,  -1.0, +0.2, +0.0,  -0.6, +0.2, +0.0, 
+    -1.0, +0.6, +0.0,  -0.6, +0.2, +0.0,  -0.6, +0.6, +0.0,
+  //5
+    -0.2, -0.2, +0.0,  -0.2, -0.6, +0.0,  +0.2, -0.6, +0.0, 
+    -0.2, -0.2, +0.0,  +0.2, -0.6, +0.0,  +0.2, -0.2, +0.0,
+  //6
+    +0.2, -0.2, +0.0,  +0.2, -0.6, +0.0,  +0.6, -0.6, +0.0, 
+    +0.2, -0.2, +0.0,  +0.6, -0.6, +0.0,  +0.6, -0.2, +0.0,
+  //7
+    -0.2, -0.6, +0.0,  -0.2, -1.0, +0.0,  +0.2, -1.0, +0.0, 
+    -0.2, -0.6, +0.0,  +0.2, -1.0, +0.0,  +0.2, -0.6, +0.0,
+  //8
+    -0.6, -0.6, +0.0,  -0.6, -1.0, +0.0,  -0.2, -1.0, +0.0, 
+    -0.6, -0.6, +0.0,  -0.2, -1.0, +0.0,  -0.2, -0.6, +0.0,
+  //9
+    -0.2, +0.6, +0.0,  -0.2, +0.2, +0.0,  +0.2, +0.2, +0.0, 
+    -0.2, +0.6, +0.0,  +0.2, +0.2, +0.0,  +0.2, +0.6, +0.0,
+  //10
+    +0.2, +0.6, +0.0,  +0.2, +0.2, +0.0,  +0.6, +0.2, +0.0, 
+    +0.2, +0.6, +0.0,  +0.6, +0.2, +0.0,  +0.6, +0.6, +0.0,
+  //11
+    +0.6, +0.6, +0.0,  +0.6, +0.2, +0.0,  +1.0, +0.2, +0.0, 
+    +0.6, +0.6, +0.0,  +1.0, +0.2, +0.0,  +1.0, +0.6, +0.0,
+  //12
+    +0.6, +1.0, +0.0,  +0.6, +0.6, +0.0,  +1.0, +0.6, +0.0, 
+    +0.6, +1.0, +0.0,  +1.0, +0.6, +0.0,  +1.0, +1.0, +0.0,
+  ];
+
+  vertexPositionBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexPositionBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexPosition), gl.STATIC_DRAW);
+  vertexPositionBuffer.itemSize = 3;
+  vertexPositionBuffer.numItems = vertexPosition.length / 3;
+
+  var vertexColor = [
+    //1
+  -0.2, +0.2, +0.0,  -0.2, -0.2, +0.0,  +0.2, -0.2, +0.0, 
+    -0.2, +0.2, +0.0,  +0.2, -0.2, +0.0,  +0.2, +0.2, +0.0,
+  //2
+    -0.6, +0.2, +0.0,  -0.6, -0.2, +0.0,  -0.2, -0.2, +0.0, 
+    -0.6, +0.2, +0.0,  -0.2, -0.2, +0.0,  -0.2, +0.2, +0.0,
+  //3
+    -1.0, +0.2, +0.0,  -1.0, -0.2, +0.0,  -0.6, -0.2, +0.0, 
+    -1.0, +0.2, +0.0,  -0.6, -0.2, +0.0,  -0.6, +0.2, +0.0,
+  //4
+    -1.0, +0.6, +0.0,  -1.0, +0.2, +0.0,  -0.6, +0.2, +0.0, 
+    -1.0, +0.6, +0.0,  -0.6, +0.2, +0.0,  -0.6, +0.6, +0.0,
+  //5
+    -0.2, -0.2, +0.0,  -0.2, -0.6, +0.0,  +0.2, -0.6, +0.0, 
+    -0.2, -0.2, +0.0,  +0.2, -0.6, +0.0,  +0.2, -0.2, +0.0,
+  //6
+    +0.2, -0.2, +0.0,  +0.2, -0.6, +0.0,  +0.6, -0.6, +0.0, 
+    +0.2, -0.2, +0.0,  +0.6, -0.6, +0.0,  +0.6, -0.2, +0.0,
+  //7
+    -0.2, -0.6, +0.0,  -0.2, -1.0, +0.0,  +0.2, -1.0, +0.0, 
+    -0.2, -0.6, +0.0,  +0.2, -1.0, +0.0,  +0.2, -0.6, +0.0,
+  //8
+    -0.6, -0.6, +0.0,  -0.6, -1.0, +0.0,  -0.2, -1.0, +0.0, 
+    -0.6, -0.6, +0.0,  -0.2, -1.0, +0.0,  -0.2, -0.6, +0.0,
+  //9
+    -0.2, +0.6, +0.0,  -0.2, +0.2, +0.0,  +0.2, +0.2, +0.0, 
+    -0.2, +0.6, +0.0,  +0.2, +0.2, +0.0,  +0.2, +0.6, +0.0,
+  //10
+    +0.2, +0.6, +0.0,  +0.2, +0.2, +0.0,  +0.6, +0.2, +0.0, 
+    +0.2, +0.6, +0.0,  +0.6, +0.2, +0.0,  +0.6, +0.6, +0.0,
+  //11
+    +0.6, +0.6, +0.0,  +0.6, +0.2, +0.0,  +1.0, +0.2, +0.0, 
+    +0.6, +0.6, +0.0,  +1.0, +0.2, +0.0,  +1.0, +0.6, +0.0,
+  //12
+    +0.6, +1.0, +0.0,  +0.6, +0.6, +0.0,  +1.0, +0.6, +0.0, 
+    +0.6, +1.0, +0.0,  +1.0, +0.6, +0.0,  +1.0, +1.0, +0.0,
+  ];
+
+  vertexColorBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexColorBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexColor), gl.STATIC_DRAW);
+  vertexColorBuffer.itemSize = 3;
+  vertexColorBuffer.numItems = vertexColor.length / 3;
+
+  // Matrix describing camera position in 3D space
+  var aspect = gl.viewportWidth / gl.viewportHeight;
+  var fov = 45.0 * Math.PI / 180.0;
+  var zFar = 100.0;
+  var zNear = 0.1;
+  uPMatrix = [
+    1.0 / (aspect * Math.tan(fov / 2)), 0, 0, 0,
+    0, 1.0 / (Math.tan(fov / 2)), 0, 0,
+    0, 0, -(zFar + zNear) / (zFar - zNear), -1,
+    0, 0, -(2 * zFar * zNear) / (zFar - zNear), 0.0,
+  ];
+
+  document.addEventListener('keydown', handleKeyDown, false);
+  Tick();
+}
+
+function handleKeyDown(event) {
+  switch (event.keyCode) {
+    case 75: // K - move up
+      moveCamera(moveSpeed);
+      break;
+    case 74: // J - move down
+      moveCamera(-moveSpeed);
+      break;
+    case 76: // L - rotate right
+      rotateCamera(rotateSpeed);
+      break;
+    case 73: // I - rotate left
+      rotateCamera(-rotateSpeed);
+      break;
+  }
+}
+
+function moveCamera(distance) {
+  cameraZ -= distance;
+}
+
+function rotateCamera(angle) {
+  cameraYaw += angle;
+}
+
+function Tick() {
+  var uMVMatrix = [
+    Math.cos(cameraYaw * Math.PI / 180.0), -Math.sin(cameraYaw * Math.PI / 180.0), 0, 0,
+    Math.sin(cameraYaw * Math.PI / 180.0), Math.cos(cameraYaw * Math.PI / 180.0), 0, 0,
+    0, 0, 1, 0,
+    cameraX, cameraY, cameraZ, 1
+  ];
+
+  gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+  gl.clearColor(0.0, 0.0, 0.0, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(shaderProgram);
+
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthFunc(gl.LEQUAL);
+
+  gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uPMatrix"), false, new Float32Array(uPMatrix));
+  gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uMVMatrix"), false, new Float32Array(uMVMatrix));
+
+  gl.enableVertexAttribArray(gl.getAttribLocation(shaderProgram, "aVertexPosition"));
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexPositionBuffer);
+  gl.vertexAttribPointer(gl.getAttribLocation(shaderProgram, "aVertexPosition"), vertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+  gl.enableVertexAttribArray(gl.getAttribLocation(shaderProgram, "aVertexColor"));
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexColorBuffer);
+  gl.vertexAttribPointer(gl.getAttribLocation(shaderProgram, "aVertexColor"), vertexColorBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+  gl.drawArrays(gl.TRIANGLES, 0, vertexPositionBuffer.numItems * vertexPositionBuffer.itemSize);
+
+  requestAnimationFrame(Tick);
+}
+</script>
+</head>
+<body onload="startGL()">
+<canvas id="canvas3D" width="640" height="480" style="border: solid black 1px"></canvas>
+</body>
+</html>
